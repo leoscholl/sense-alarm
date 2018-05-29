@@ -25,26 +25,28 @@ void handle_init(void) {
   // Trigger the alarm immediately if the worker woke us up
   if (launch_reason() == APP_LAUNCH_WORKER) {
     alarm_trigger();
+  } else {
+  
+    // Save the default alarm time
+    if (!alarm_time_exists())
+      set_alarm_time(WAKEUP_HOUR, WAKEUP_MINUTE);
+    
+    // Open the UI
+    ui_init();
+  
+    // Subscribe to worker messages
+    app_worker_message_subscribe(worker_message_handler);
+  
+    // Make sure worker is turned on if alarm is on
+    if (get_alarm_state() && !app_worker_is_running())
+      app_worker_launch();
   }
-  
-  // Save the default alarm time
-  if (!alarm_time_exists())
-    set_alarm_time(WAKEUP_HOUR, WAKEUP_MINUTE);
-  
-  // Open the UI
-  ui_init();
-
-  // Subscribe to worker messages
-  app_worker_message_subscribe(worker_message_handler);
-
-  // Make sure worker is turned on if alarm is on
-  if (get_alarm_state() && !app_worker_is_running())
-    app_worker_launch();
 
 }
 
 void handle_deinit(void) {
-  ui_deinit();
+  if (launch_reason() != APP_LAUNCH_WORKER)
+    ui_deinit();
 }
 
 int main(void) {

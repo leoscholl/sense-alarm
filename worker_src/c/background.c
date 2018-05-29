@@ -52,6 +52,8 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
       worker_launch_app(); // if app is closed
       listening = false;
       alarm_time = alarm_time + SECONDS_PER_DAY;
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "Setting a new alarm for %u hours from now", 
+              (unsigned int)(alarm_time - time(NULL))/SECONDS_PER_HOUR);
     }
   } else { // Accelerometer data is not being logged
     if (mktime(tick_time) >= alarm_time - WAKEUP_WINDOW_SECONDS)
