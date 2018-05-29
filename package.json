@@ -1,0 +1,29 @@
+{
+    "author": "leo.scholl@gmail.com",
+    "dependencies": {
+        "pebble-clay": "^1.0.4"
+    },
+    "keywords": [],
+    "name": "sense-alarm",
+    "pebble": {
+        "displayName": "Sense Alarm",
+        "enableMultiJS": false,
+        "messageKeys": [],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "aplite",
+            "basalt",
+            "chalk",
+            "diorite"
+        ],
+        "uuid": "3c233c11-58f3-4b2c-a2b5-369b8a493bbb",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
