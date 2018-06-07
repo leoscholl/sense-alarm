@@ -11,7 +11,28 @@
         "messageKeys": [],
         "projectType": "native",
         "resources": {
-            "media": []
+            "media": [
+                {
+                    "file": "images/ellipsis-icon.png",
+                    "name": "IMAGE_ELLIPSIS",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                },
+                {
+                    "file": "images/clock-icon-25.png",
+                    "menuIcon": true,
+                    "name": "IMAGE_CLOCK_25",
+                    "storageFormat": "png",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                },
+                {
+                    "file": "images/clock-icon.png",
+                    "name": "IMAGE_CLOCK",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                }
+            ]
         },
         "sdkVersion": "3",
         "targetPlatforms": [
@@ -20,7 +41,7 @@
             "chalk",
             "diorite"
         ],
-        "uuid": "3c233c11-58f3-4b2c-a2b5-369b8a493bbb",
+        "uuid": "01100d10-09f2-4f53-b9c6-7df2d472055b",
         "watchapp": {
             "watchface": false
         }

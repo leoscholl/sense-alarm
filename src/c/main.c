@@ -9,9 +9,15 @@
 #define SENDER_WORKER 0
 #define SENDER_APP 1
 
+bool did_alarm_init = false;
+
 // Close the worker and start the alarm sequence
-void alarm_trigger(void) {
-  do_alarm((void *)true);
+static void alarm_trigger(void) {
+  if (!did_alarm_init) {
+    alarm_init();
+    did_alarm_init = true;
+  }
+  do_alarm(0);
 }
 
 // Handle when the worker sends a message (alarm trigger)
@@ -20,10 +26,16 @@ static void worker_message_handler(uint16_t type, AppWorkerMessage *message) {
     alarm_trigger();
 }
 
-void handle_init(void) {
+// Handle when a wakeup is received (alarm trigger)
+static void wakeup_handler(WakeupId id, int32_t reason) {
+  alarm_trigger();
+}
+
+static void handle_init(void) {
   
-  // Trigger the alarm immediately if the worker woke us up
-  if (launch_reason() == APP_LAUNCH_WORKER) {
+  // Trigger the alarm immediately if the worker or wakeup woke us up
+  if (launch_reason() == APP_LAUNCH_WORKER || 
+     launch_reason() == APP_LAUNCH_WAKEUP) {
     alarm_trigger();
   } else {
   
@@ -34,8 +46,9 @@ void handle_init(void) {
     // Open the UI
     ui_init();
   
-    // Subscribe to worker messages
+    // Subscribe to alarm trigger messages
     app_worker_message_subscribe(worker_message_handler);
+    wakeup_service_subscribe(wakeup_handler);
   
     // Make sure worker is turned on if alarm is on
     if (get_alarm_state() && !app_worker_is_running())
@@ -44,8 +57,11 @@ void handle_init(void) {
 
 }
 
-void handle_deinit(void) {
-  if (launch_reason() != APP_LAUNCH_WORKER)
+static void handle_deinit(void) {
+  if (did_alarm_init)
+    alarm_deinit();
+  if (launch_reason() != APP_LAUNCH_WORKER &&
+     launch_reason() != APP_LAUNCH_WAKEUP)
     ui_deinit();
 }
 

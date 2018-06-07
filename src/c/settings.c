@@ -42,7 +42,6 @@ bool get_alarm_state(void) {
 
 // Save the hour and minute to persistent storage
 void set_alarm_time(uint32_t hour, uint32_t minute) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Alarm changed to %02u:%02u", (unsigned int)hour, (unsigned int)minute);
   persist_write_int(ALARM_HOUR_KEY, hour);
   persist_write_int(ALARM_MINUTE_KEY, minute);
   

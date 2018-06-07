@@ -2,8 +2,8 @@
 #include "ui.h"
 #include "settings.h"
 
-#define TIME_CHANGE_RESOLUTION 15
-#define TIME_CHANGE_REPEAT_DURATION 100
+#define TIME_CHANGE_RESOLUTION 5
+#define TIME_CHANGE_REPEAT_DURATION 50
 
 Window *s_main_window;
 TextLayer *time_layer;
@@ -13,11 +13,11 @@ StatusBarLayer *status_bar;
 // Change the time displayed on the screen
 static void display_time(uint32_t hour, uint32_t minute) {
   
-  static char buffer[8];
+  static char buffer[20];
   if (clock_is_24h_style())
-    snprintf(buffer, sizeof(buffer), "%02u:%02u", (unsigned int)hour, (unsigned int)minute);
+    snprintf(buffer, sizeof(buffer), "Alarm set: %02u:%02u", (unsigned int)hour, (unsigned int)minute);
   else
-    snprintf(buffer, sizeof(buffer), "%u:%02u%s", hour % 12 ? (unsigned int)hour % 12 : 12, 
+    snprintf(buffer, sizeof(buffer), "Alarm set: %u:%02u%s", hour % 12 ? (unsigned int)hour % 12 : 12, 
              (unsigned int)minute, hour > 12 ? "pm" : "am");
   text_layer_set_text(time_layer, buffer);
   layer_set_hidden(text_layer_get_layer(time_layer), false);
@@ -43,7 +43,7 @@ static void display_default(bool state) {
   }
 }
 
-// Up clicks increase the alarm time by 15 minutes
+// Up clicks increase the alarm time
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
   if (!get_alarm_state())
     return;
@@ -91,10 +91,10 @@ static void main_window_load(Window *window) {
   
   // Calculate remaining space
   GRect bounds = layer_get_unobstructed_bounds(window_layer);
+  GRect text_bounds = GRect(bounds.origin.x+10, bounds.size.h/3, bounds.size.w-20, bounds.size.h/3);
   
   // Create text layer
-  text_layer = text_layer_create(
-    GRect(0, PBL_IF_ROUND_ELSE(64, 56), bounds.size.w, 50));
+  text_layer = text_layer_create(text_bounds);
   text_layer_set_background_color(text_layer, GColorClear);
   text_layer_set_text_color(text_layer, GColorWhite);
   text_layer_set_font(text_layer, fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21));
@@ -102,11 +102,11 @@ static void main_window_load(Window *window) {
   layer_add_child(window_layer, text_layer_get_layer(text_layer));
   
   // Create time layer
-  time_layer = text_layer_create(
-    GRect(0, PBL_IF_ROUND_ELSE(58, 52), bounds.size.w, 50));
+  time_layer = text_layer_create(text_bounds);
   text_layer_set_background_color(time_layer, GColorClear);
   text_layer_set_text_color(time_layer, GColorWhite);
-  text_layer_set_font(time_layer, fonts_get_system_font(FONT_KEY_DROID_SERIF_28_BOLD));
+  text_layer_set_font(time_layer, fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21));
+  text_layer_set_overflow_mode(time_layer, GTextOverflowModeWordWrap);
   text_layer_set_text_alignment(time_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(time_layer));
 }

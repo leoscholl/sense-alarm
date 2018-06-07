@@ -3,10 +3,8 @@
 #include "accel.h"
 #include "datastore.h"
 
-#define BUF_SIZE 300
-#define LOCAL_AVG_SIZE 50
-
-bool is_running = false;
+#define BUF_SIZE 500
+#define LOCAL_AVG_SIZE 100
 
 // Process accelerometer data
 static void accel_data_handler(AccelData *data, uint32_t num_samples) {
@@ -34,8 +32,8 @@ static void accel_data_handler(AccelData *data, uint32_t num_samples) {
   
   avg /= num_samples;
   
-  // Store the sample at the current time
-  store_sample(time(NULL), avg);
+  // Store the sample
+  store_sample((uint16_t)avg);
 }
 
 // Check whether accel data is at local maximum
@@ -52,15 +50,11 @@ void init_accel(void) {
   
   // Set up the circular buffer datastore
   init_datastore(BUF_SIZE);
-  is_running = true;
 }
 
 // De-initialize if needed
 void deinit_accel(void) {
-  if (is_running) {
-    APP_LOG(APP_LOG_LEVEL_INFO, "Acceleration logging OFF");
-    accel_data_service_unsubscribe();
-    deinit_datastore();
-    is_running = false;
-  }
+  APP_LOG(APP_LOG_LEVEL_INFO, "Acceleration logging OFF");
+  accel_data_service_unsubscribe();
+  deinit_datastore();
 }

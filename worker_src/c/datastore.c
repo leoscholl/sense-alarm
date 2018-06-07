@@ -2,11 +2,10 @@
 #include "datastore.h"
 
 #define PEAK_DERIV 0.1
-#define IS_MOVING_AVG 1
+#define MOVING_AVG_SAMPLES 10
 
 typedef struct Samples {
-  time_t time;
-  uint32_t data;
+  uint16_t data;
 } Sample;
 
 typedef struct circular_buffer
@@ -24,22 +23,25 @@ static circular_buffer buf;
 // Create a new circular buffer
 void cb_init(circular_buffer *cb, size_t capacity, size_t sz)
 {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "cb_init");
-    cb->buffer = malloc(capacity * sz);
-    if(cb->buffer == NULL)
-        APP_LOG(APP_LOG_LEVEL_ERROR, "Memory allocation failed");
-    cb->buffer_end = (char *)cb->buffer + capacity * sz;
-    cb->capacity = capacity;
-    cb->count = 0;
-    cb->sz = sz;
-    cb->head = cb->buffer;
+  cb->buffer = malloc(capacity * sz);
+  if(cb->buffer == NULL)
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Memory allocation failed");
+  cb->buffer_end = (char *)cb->buffer + capacity * sz;
+  cb->capacity = capacity;
+  cb->count = 0;
+  cb->sz = sz;
+  cb->head = cb->buffer;
 }
 
 // Release memory for the buffer array
 void cb_free(circular_buffer *cb)
 {
-    free(cb->buffer);
-    // clear out other fields too, just to be safe
+  free(cb->buffer);
+  cb->buffer = NULL;
+  cb->buffer_end = NULL;
+  cb->head = NULL;
+  cb->count = 0;
+  cb->capacity = 0;
 }
 
 // Add a new item to the buffer
@@ -81,21 +83,20 @@ void* cb_peek(circular_buffer *cb, size_t index)
   return loc;
 }
 
-// Store a time/data sample into the buffer
-void store_sample(time_t time, uint32_t data) {
+// Store a data sample into the buffer
+void store_sample(uint16_t data) {
 
   Sample s;
 
   // Moving average
-  if (IS_MOVING_AVG && cb_size(&buf) > 0) {
+  if (MOVING_AVG_SAMPLES > 0 && cb_size(&buf) > 0) {
     Sample s_prev;
     s_prev = *(Sample*)cb_peek(&buf, 0);
-    s.data = (data + 4*s_prev.data)/5;
+    s.data = (data + (MOVING_AVG_SAMPLES-1)*s_prev.data)/MOVING_AVG_SAMPLES;
   }
   else {
     s.data = data;
   }
-  s.time = time;  
   cb_push_back(&buf, &s);
 }
 
@@ -112,12 +113,12 @@ bool ds_is_local_max(size_t num_samples) {
   
   // Average over whole datastore
   Sample s1;
-  uint32_t avg = 0;
+  uint16_t avg = 0;
   for (int i=0; i<(int)cb_size(&buf); i++) {
     s1 = *(Sample*)cb_peek(&buf, i);
     avg += s1.data;
   }
-  avg /= (uint32_t)cb_size(&buf);
+  avg /= (uint16_t)cb_size(&buf);
   // APP_LOG(APP_LOG_LEVEL_DEBUG, "Data average: %u", (unsigned int)avg);
 
   // Check for absolute threshold and local min/max
@@ -125,18 +126,16 @@ bool ds_is_local_max(size_t num_samples) {
   float deriv_avg = 0;
   Sample s2;
   s1 = *(Sample*)cb_peek(&buf, 0);
-  uint32_t current_avg = s1.data;
-  time_t d_time;
+  uint16_t current_avg = s1.data;
   for (int i=1; i<(int)num_samples; i++) {
     s2 = *(Sample*)cb_peek(&buf, i);
     current_avg += s2.data;
-    d_time = (s2.time - s1.time) > 0 ? s2.time - s1.time : 1;
-    deriv[i-1] = (float)((int32_t)s1.data - (int32_t)s2.data)/(float)d_time;
-    
-    s1 = *(Sample*)cb_peek(&buf, i);
+    deriv[i-1] = (float)((uint16_t)s1.data - (uint16_t)s2.data);
     deriv_avg += deriv[i-1];
+
+    s1 = *(Sample*)cb_peek(&buf, i);
   }
-  current_avg /= (uint32_t)num_samples;
+  current_avg /= (uint16_t)num_samples;
   deriv_avg /= (float)num_samples - 1.0;
   
   
@@ -170,12 +169,23 @@ bool ds_is_local_max(size_t num_samples) {
 }
 
 void init_datastore(size_t capacity) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "init_datastore");
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Initialize datastore");
   size_t sz = sizeof(Sample);
   cb_init(&buf, capacity, sz);
 }
 
 void deinit_datastore(void) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "deinit_datastore");
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Deinitialize datastore");
+  
+  // Log the current buffer state into the datalog
+  static DataLoggingSessionRef s_session_ref;
+  s_session_ref = data_logging_create(1, DATA_LOGGING_UINT, sizeof(uint16_t), false);
+  Sample s;
+  for (int i=0; i<(int)cb_size(&buf); i++) {
+    s = *(Sample*)cb_peek(&buf, i);
+    data_logging_log(s_session_ref, &(s.data), 1);
+  }
+  data_logging_finish(s_session_ref);
+
   cb_free(&buf);
 }
