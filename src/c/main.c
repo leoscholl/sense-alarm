@@ -32,7 +32,7 @@ static void wakeup_handler(WakeupId id, int32_t reason) {
 }
 
 static void handle_init(void) {
-  
+    
   // Trigger the alarm immediately if the worker or wakeup woke us up
   if (launch_reason() == APP_LAUNCH_WORKER || 
      launch_reason() == APP_LAUNCH_WAKEUP) {

@@ -1,8 +1,6 @@
 #include <pebble_worker.h>
 #include "datastore.h"
-
-#define PEAK_DERIV 0.1
-#define MOVING_AVG_SAMPLES 10
+#include "math.h"
 
 typedef struct Samples {
   uint16_t data;
@@ -70,102 +68,107 @@ void* cb_peek(circular_buffer *cb, size_t index)
     return NULL;
   }
   
-  size_t count = 0;
-  char *loc = cb->head - cb->sz;
-  if (loc < (char *)cb->buffer)
-    loc = cb->buffer_end - cb->sz;
-  while (count < index) {
-    loc = loc - cb->sz;
-    if (loc < (char *)cb->buffer)
-      loc = cb->buffer_end - cb->sz;
-    count++;
-  }
-  return loc;
+  void *item = cb->head - cb->sz - index * cb->sz;
+  if (item < cb->buffer)
+    item = cb->buffer_end - (cb->buffer - item);
+  return item;
 }
 
 // Store a data sample into the buffer
 void store_sample(uint16_t data) {
-
   Sample s;
-
-  // Moving average
-  if (MOVING_AVG_SAMPLES > 0 && cb_size(&buf) > 0) {
-    Sample s_prev;
-    s_prev = *(Sample*)cb_peek(&buf, 0);
-    s.data = (data + (MOVING_AVG_SAMPLES-1)*s_prev.data)/MOVING_AVG_SAMPLES;
-  }
-  else {
-    s.data = data;
-  }
+  s.data = data;
   cb_push_back(&buf, &s);
 }
 
-// Calculate instantaneous derivative of num_samples
-bool ds_is_local_max(size_t num_samples) {
+// Return contents of datastore
+uint16_t *ds_contents(void) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Buffer holds %u items, copying to new array", (unsigned int)cb_size(&buf));
+  uint16_t *contents = malloc(cb_size(&buf) * sizeof(uint16_t));
+  if(contents == NULL)
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Memory allocation failed");
+  Sample s;
+  for (int i=0; i<(int)cb_size(&buf); i++) {
+    s = *(Sample*)cb_peek(&buf, i);
+    contents[i] = s.data;
+  }
+  return contents;
+}
 
-  
-  if (num_samples*2 >= cb_size(&buf)) {
+uint16_t mean(void) {
+  Sample s1;
+  uint32_t sum = 0;
+  uint32_t n = cb_size(&buf);
+  for (uint32_t i=0; i<n; i++) {
+    s1 = *(Sample*)cb_peek(&buf, i);
+    sum += s1.data;
+  }
+  return (uint16_t)(sum / n);
+}
+
+uint16_t std_dev(void) {
+  uint32_t n = cb_size(&buf);
+  if (n == 0) return 0;
+  Sample s;
+  uint32_t sum = 0;
+  uint32_t sq_sum = 0;
+  for(uint32_t i=0; i<n; i++) {
+    s = *(Sample*)cb_peek(&buf, i);
+    uint32_t d = s.data;
+    sum += d;
+    sq_sum += d * d;
+  }
+  return (uint16_t)sm_sqrt((n * sq_sum - sum * sum) / (n * n));
+}
+
+// Calculate instantaneous derivative of num_samples
+bool ds_is_local_max(unsigned int num_samples) {
+
+  unsigned int num_buffer = cb_size(&buf);
+  unsigned int num_bins = num_buffer/num_samples;
+    
+  if (num_samples*2 >= num_buffer) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Number of samples requested is too high");
     return false;
   }
-  if (num_samples < 4) {
+  if (num_bins < 3) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Number of samples requested is too low");
     return false;
   } 
   
-  // Average over whole datastore
-  Sample s1;
-  uint16_t avg = 0;
-  for (int i=0; i<(int)cb_size(&buf); i++) {
-    s1 = *(Sample*)cb_peek(&buf, i);
-    avg += s1.data;
+  // Mean and standard deviation over whole datastore
+  uint16_t avg = mean();
+  uint16_t std = std_dev();
+  uint16_t thr = avg + 2*std;
+  
+  // Calculate spike rates
+  Sample s;
+  uint16_t spikes_global = 0;
+  uint16_t spikes_bins[3] = {0};
+  for (unsigned int i=0; i<num_buffer; i++) {
+    s = *(Sample*)cb_peek(&buf, i);
+    if (s.data > thr) {
+      spikes_global++;
+      if (i*num_bins/num_buffer < 3) spikes_bins[i*num_bins/num_buffer]++;
+    }
   }
-  avg /= (uint16_t)cb_size(&buf);
-  // APP_LOG(APP_LOG_LEVEL_DEBUG, "Data average: %u", (unsigned int)avg);
+  for (unsigned int i=0; i<3; i++) {
+    spikes_bins[i] *= num_bins;
+  }
 
-  // Check for absolute threshold and local min/max
-  float deriv[num_samples-1];
-  float deriv_avg = 0;
-  Sample s2;
-  s1 = *(Sample*)cb_peek(&buf, 0);
-  uint16_t current_avg = s1.data;
-  for (int i=1; i<(int)num_samples; i++) {
-    s2 = *(Sample*)cb_peek(&buf, i);
-    current_avg += s2.data;
-    deriv[i-1] = (float)((uint16_t)s1.data - (uint16_t)s2.data);
-    deriv_avg += deriv[i-1];
+  // No need to continue if local is lower global
+  if (spikes_bins[0] <= spikes_global)
+    return false;
+  
+  // Slope must be negative
+  if (spikes_bins[0] < spikes_bins[1])
+    return false;
+  
+  // Previous slope must be positive
+  if (spikes_bins[1] > spikes_bins[2])
+    return false;
 
-    s1 = *(Sample*)cb_peek(&buf, i);
-  }
-  current_avg /= (uint16_t)num_samples;
-  deriv_avg /= (float)num_samples - 1.0;
-  
-  
-  // APP_LOG(APP_LOG_LEVEL_DEBUG, "Local average: %u", (unsigned int)current_avg);
-  // APP_LOG(APP_LOG_LEVEL_DEBUG, "Deriv average: %d.%03d", (int)deriv_avg, (int)(deriv_avg*1000)%1000);
-  
-  // No need to continue if absolute accel is low
-  if (current_avg <= avg) {
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Not local max; current_avg (%u) smaller than avg (%u)", (unsigned int)current_avg, (unsigned int)avg);
-    return false;
-  }
-  
-  // No need to continue if slope is high
-  if (abs(deriv_avg) > PEAK_DERIV) {
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Not local min/max; deriv too high at %d.%03d", (int)deriv_avg, (int)(deriv_avg*1000)%1000);
-    return false;
-  }
-  // APP_LOG(APP_LOG_LEVEL_DEBUG, "Local min/max; deriv %d.%03d", (int)deriv_avg, (int)(deriv_avg*1000)%1000);
-  
-  // Check double derivative
-  float dderiv_avg = 0;
-  for (int i=1; i<(int)num_samples-1; i++) {
-    dderiv_avg += (deriv[i] - deriv[i-1])/2.0;
-  }
-  if (dderiv_avg >= 0) {
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "Local max; dderiv %f", dderiv_avg);
-    return true;
-  }
-  // APP_LOG(APP_LOG_LEVEL_DEBUG, "Local min; dderiv %f", dderiv_avg);
-  return false;
+  return true;
 }
 
 void init_datastore(size_t capacity) {
@@ -176,16 +179,5 @@ void init_datastore(size_t capacity) {
 
 void deinit_datastore(void) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Deinitialize datastore");
-  
-  // Log the current buffer state into the datalog
-  static DataLoggingSessionRef s_session_ref;
-  s_session_ref = data_logging_create(1, DATA_LOGGING_UINT, sizeof(uint16_t), false);
-  Sample s;
-  for (int i=0; i<(int)cb_size(&buf); i++) {
-    s = *(Sample*)cb_peek(&buf, i);
-    data_logging_log(s_session_ref, &(s.data), 1);
-  }
-  data_logging_finish(s_session_ref);
-
   cb_free(&buf);
 }

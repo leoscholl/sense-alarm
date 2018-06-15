@@ -3,14 +3,14 @@
 
 #define ALARM_REPEAT 5
 #define ALARM_LIMIT (ARRAY_LENGTH(alarm_pattern) * ALARM_REPEAT)
-#define SNOOZE_DURATION_SECONDS 1 * SECONDS_PER_MINUTE
+#define SNOOZE_DURATION_SECONDS 9 * SECONDS_PER_MINUTE
 
 // Times (in seconds) between each vibe (gives a progressive alarm and gaps between phases)
 static uint8_t alarm_pattern[] = { 5, 4, 4, 3, 3, 3, 2, 2, 2, 2, 30 };
 
 // Pulse widths (in milliseconds) for each single vibe
-static uint32_t const single_segments[] = { 50 };
-static uint32_t const double_segments[] = { 50, 100, 50 };
+static uint32_t const single_segments[] = { 100 };
+static uint32_t const double_segments[] = { 100, 100, 100 };
 VibePattern single_pat = {
   .durations = single_segments,
   .num_segments = ARRAY_LENGTH(single_segments),
@@ -21,6 +21,7 @@ VibePattern double_pat = {
 };
 
 static AppTimer *alarm_timer = NULL;
+uint8_t alarm_count = ALARM_LIMIT;
 
 Window *s_window;
 static StatusBarLayer *s_status_bar;
@@ -32,7 +33,6 @@ static GBitmap *s_ellipsis_bitmap;
 // Alarm timer loop
 void do_alarm(void *data) {
   
-  uint8_t alarm_count;
   if (data == NULL)
     alarm_count = 0;
   else
@@ -40,6 +40,8 @@ void do_alarm(void *data) {
   
   if (alarm_count == 0)
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Alarm fired, starting vibes");
+  else
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Alarm count = %u", (unsigned int)alarm_count);
 
   // Already hit the limit, give up
   if (alarm_count >= ALARM_LIMIT)
@@ -161,7 +163,7 @@ void alarm_window_load(Window *window) {
 
 void alarm_init(void) {
   s_window = window_create();
-  window_set_background_color(s_window, PBL_IF_COLOR_ELSE(GColorChromeYellow, GColorWhite));
+  window_set_background_color(s_window, PBL_IF_COLOR_ELSE(GColorOxfordBlue, GColorWhite));
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = alarm_window_load,
     .unload = alarm_window_unload,

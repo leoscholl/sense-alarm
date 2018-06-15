@@ -18,7 +18,7 @@ static void display_time(uint32_t hour, uint32_t minute) {
     snprintf(buffer, sizeof(buffer), "Alarm set: %02u:%02u", (unsigned int)hour, (unsigned int)minute);
   else
     snprintf(buffer, sizeof(buffer), "Alarm set: %u:%02u%s", hour % 12 ? (unsigned int)hour % 12 : 12, 
-             (unsigned int)minute, hour > 12 ? "pm" : "am");
+             (unsigned int)minute, hour >= 12 ? "pm" : "am");
   text_layer_set_text(time_layer, buffer);
   layer_set_hidden(text_layer_get_layer(time_layer), false);
   layer_set_hidden(text_layer_get_layer(text_layer), true);

@@ -2,19 +2,19 @@
 #include "background.h"
 #include "accel.h"
 
+#include "tests.h"
+
 #define ALARM_HOUR_KEY 0
 #define ALARM_MINUTE_KEY 1
 
+#define RECORDING_BEFORE_WAKEUP_WINDOW_SECONDS 6 * SECONDS_PER_HOUR
 #define WAKEUP_WINDOW_SECONDS 30 * SECONDS_PER_MINUTE
 
 #define SENDER_WORKER 0
 #define SENDER_APP 1
 
 time_t alarm_time;
-bool listening = false;
-AppWorkerMessage message = {
-  .data0 = true
-};
+bool accel_is_on = false;
 
 void load_alarm_time(void) {
   
@@ -30,38 +30,60 @@ void load_alarm_time(void) {
   }
   alarm_time = time_start_of_today() + (hour*SECONDS_PER_HOUR) + (minute*SECONDS_PER_MINUTE);
   
-  // Next occuring alarm time excluding the current wakeup window
+  // Next occuring alarm time
   while (alarm_time < time(NULL))
     alarm_time = alarm_time + SECONDS_PER_DAY;
 }
 
+static void trigger_alarm(void) {
+  AppWorkerMessage message = {
+    .data0 = true
+  };
+  app_worker_send_message(SENDER_WORKER, &message); // if app is open already
+  worker_launch_app(); // if app is closed
+  alarm_time += SECONDS_PER_DAY;
+}
+
 static void tick_handler(struct tm *tick_time, TimeUnits changed) {
-  if (listening) { // Accelerometer data is being logged
-          
-    // If the alarm time was changed recently, may need to turn off accelerometer
-    if (mktime(tick_time) < alarm_time - WAKEUP_WINDOW_SECONDS) {
+  
+  // Check alarm time for trigger regardless of recording status
+  if (mktime(tick_time) >= alarm_time) { 
+    trigger_alarm();
+    if (accel_is_on) {
       deinit_accel();
-      listening = false;
+      accel_is_on = false;
+      return;
     }
-    
-    // Trigger the alarm if either wakeup condition is met
-    if (is_local_max() || mktime(tick_time) >= alarm_time) {
-      APP_LOG(APP_LOG_LEVEL_INFO, "Alarm triggered");
-      deinit_accel();
-      listening = false;
-      app_worker_send_message(SENDER_WORKER, &message); // if app is open already
-      worker_launch_app(); // if app is closed
-      alarm_time += SECONDS_PER_DAY;
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "Setting a new alarm for %u hours from now", 
-              (unsigned int)(alarm_time - time(NULL))/SECONDS_PER_HOUR);
-    }
-  } else { // Accelerometer data is not being logged
-    if (mktime(tick_time) >= alarm_time - WAKEUP_WINDOW_SECONDS) {
-      
-      // Start listening to accelerometer data
-      init_accel();
-      listening = true;
-    }
+  }
+  
+  // Trigger the alarm if we're in the wakeup window and the datastore 
+  // is currently in a local maxmimum
+  if (accel_is_on && 
+      mktime(tick_time) >= alarm_time - WAKEUP_WINDOW_SECONDS && 
+      is_local_max()) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "Alarm triggered");
+    deinit_accel();
+    accel_is_on = false;
+    trigger_alarm();
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "Setting a new alarm for %u hours from now", 
+            (unsigned int)(alarm_time - time(NULL))/SECONDS_PER_HOUR);
+  }
+  
+  // If the alarm time was changed recently, may need to turn off accelerometer
+  if (accel_is_on && 
+      mktime(tick_time) < alarm_time - WAKEUP_WINDOW_SECONDS -
+                          RECORDING_BEFORE_WAKEUP_WINDOW_SECONDS) {
+    deinit_accel();
+    accel_is_on = false;
+    return;
+  }
+  
+  // Turn on acceleration logging if needed
+  if (!accel_is_on && 
+      mktime(tick_time) >= alarm_time - WAKEUP_WINDOW_SECONDS -
+                           RECORDING_BEFORE_WAKEUP_WINDOW_SECONDS) {
+    init_accel();
+    accel_is_on = true;
   }
 }
 
@@ -72,6 +94,7 @@ static void worker_message_handler(uint16_t type, AppWorkerMessage *message) {
 }
 
 void background_init(void) {
+  
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Background process started");
   load_alarm_time();
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
@@ -82,9 +105,9 @@ void background_init(void) {
 
 void background_deinit(void) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Background process stopped");
-  if (listening) {
+  if (accel_is_on) {
     deinit_accel();
-    listening = false;
+    accel_is_on = false;
   }
 }
 
