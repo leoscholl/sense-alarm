@@ -2,8 +2,6 @@
 #include "background.h"
 #include "accel.h"
 
-#include "tests.h"
-
 #define ALARM_HOUR_KEY 0
 #define ALARM_MINUTE_KEY 1
 

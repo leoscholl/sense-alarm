@@ -1,16 +1,18 @@
 #include <pebble.h>
 #include "alarm.h"
 
-#define ALARM_REPEAT 5
+#define ALARM_REPEAT 6
 #define ALARM_LIMIT (ARRAY_LENGTH(alarm_pattern) * ALARM_REPEAT)
 #define SNOOZE_DURATION_SECONDS 9 * SECONDS_PER_MINUTE
+#define VIBE_DUR_MS PBL_IF_ROUND_ELSE(100, 50)
 
 // Times (in seconds) between each vibe (gives a progressive alarm and gaps between phases)
-static uint8_t alarm_pattern[] = { 5, 4, 4, 3, 3, 3, 2, 2, 2, 2, 30 };
+static uint8_t alarm_pattern[] = { 5, 4, 4, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1, 30 };
 
 // Pulse widths (in milliseconds) for each single vibe
-static uint32_t const single_segments[] = { 100 };
-static uint32_t const double_segments[] = { 100, 100, 100 };
+static uint32_t const single_segments[] = { VIBE_DUR_MS };
+static uint32_t const double_segments[] = { VIBE_DUR_MS, 100, VIBE_DUR_MS };
+static uint32_t const triple_segments[] = { VIBE_DUR_MS*2, 100, VIBE_DUR_MS*2, 100, VIBE_DUR_MS*2};
 VibePattern single_pat = {
   .durations = single_segments,
   .num_segments = ARRAY_LENGTH(single_segments),
@@ -19,6 +21,11 @@ VibePattern double_pat = {
   .durations = double_segments,
   .num_segments = ARRAY_LENGTH(double_segments),
 };
+VibePattern triple_pat = {
+  .durations = triple_segments,
+  .num_segments = ARRAY_LENGTH(triple_segments),
+};
+VibePattern *vibe_pattern[3] = {&single_pat, &double_pat, &triple_pat};
 
 static AppTimer *alarm_timer = NULL;
 uint8_t alarm_count = ALARM_LIMIT;
@@ -48,10 +55,8 @@ void do_alarm(void *data) {
     return;
   
   // Vibrate
-  if (alarm_count < ARRAY_LENGTH(alarm_pattern))
-    vibes_enqueue_custom_pattern(single_pat);
-  else 
-    vibes_enqueue_custom_pattern(double_pat);
+  VibePattern pat = *vibe_pattern[(alarm_count / ARRAY_LENGTH(alarm_pattern)) % ARRAY_LENGTH(vibe_pattern)];
+  vibes_enqueue_custom_pattern(pat);
   
   // Prepare a timer for the next buzz
   uint8_t delay = alarm_pattern[alarm_count % (ARRAY_LENGTH(alarm_pattern))];
@@ -75,6 +80,8 @@ static void action_performed_callback(ActionMenu *action_menu, const ActionMenuI
   bool snooze = (bool)action_menu_item_get_action_data(action);
   if (snooze) {
     do_snooze();
+  } else {
+    vibes_double_pulse();
   }
   
   // We won't need the alarm ui any more
@@ -82,7 +89,7 @@ static void action_performed_callback(ActionMenu *action_menu, const ActionMenuI
   window_stack_remove(s_window, false);
 }
 
-// Callback for button presses in the main window
+// Callback for select button presses in the main window
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   // Configure the ActionMenu Window about to be shown
   ActionMenuConfig config = (ActionMenuConfig) {
@@ -98,8 +105,16 @@ static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   action_menu_open(&config);
 }
 
+// Callback for up or down presses
+static void other_click_handler(ClickRecognizerRef recognizer, void *context) {
+  do_snooze();
+  window_stack_remove(s_window, true);
+}
+
 static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
+  window_single_click_subscribe(BUTTON_ID_UP, other_click_handler);
+  window_single_click_subscribe(BUTTON_ID_DOWN, other_click_handler);
 }
 
 // Unload the window
@@ -132,7 +147,7 @@ void alarm_window_load(Window *window) {
 
   // Status bar shows the time at the top of the main alarm window
   s_status_bar = status_bar_layer_create();
-  status_bar_layer_set_colors(s_status_bar, GColorClear, GColorBlack);
+  status_bar_layer_set_colors(s_status_bar, GColorClear, PBL_IF_COLOR_ELSE(GColorWhite, GColorBlack));
   status_bar_layer_set_separator_mode(s_status_bar, 
                                       StatusBarLayerSeparatorModeDotted);
   GRect frame = GRect(0, 0, width, STATUS_BAR_LAYER_HEIGHT);
@@ -145,7 +160,7 @@ void alarm_window_load(Window *window) {
                                           width, bounds.size.h/2));
   text_layer_set_text(s_label_layer, "Alarm is going off! Time to wake up!!");
   text_layer_set_font(s_label_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
-  text_layer_set_text_color(s_label_layer, GColorBlack);
+  text_layer_set_text_color(s_label_layer, PBL_IF_COLOR_ELSE(GColorWhite, GColorBlack));
   text_layer_set_background_color(s_label_layer, GColorClear);
   text_layer_set_text_alignment(s_label_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_label_layer));
