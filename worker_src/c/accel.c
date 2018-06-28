@@ -3,36 +3,38 @@
 #include "accel.h"
 #include "datastore.h"
 
-#define SAMPLE_RATE 10
-#define SAMPLES_PER_BATCH 25
-#define LOCAL_AVG_SIZE 30 * SECONDS_PER_MINUTE * SAMPLE_RATE / SAMPLES_PER_BATCH
-#define BUF_SIZE 3 * LOCAL_AVG_SIZE
+#define SAMPLE_RATE           10
+#define SAMPLES_PER_BATCH     25
+#define SECONDS_PER_EPOCH     SECONDS_PER_MINUTE
+#define SECONDS_PER_BIN       10 * SECONDS_PER_MINUTE
+#define SECONDS_IN_BUFFER     SECONDS_PER_BIN * 3
+
+#define SAMPLES_PER_EPOCH     SECONDS_PER_EPOCH * SAMPLE_RATE
+#define EPOCHS_PER_BIN        SECONDS_PER_BIN / SECONDS_PER_EPOCH
+#define EPOCHS_IN_BUFFER      SECONDS_IN_BUFFER / SECONDS_PER_EPOCH
 
 #define DEBUG 1
 
-typedef struct Samples {
-  uint8_t data;
-} Sample;
-
+uint16_t count = 0;
+uint16_t samples_counted = 0;
 static DataLoggingSessionRef s_session_ref;
 static circular_buffer buf;
 
 
-// Process accelerometer data
+// Count zero-crossings in accelerometer data batches
 static void accel_data_handler(AccelData *data, uint32_t num_samples) {
 
   // Average the data
-  int16_t x, y, z;
+  int16_t x, y, z, x_prev = 0, y_prev = 0, z_prev = 0;
   float l;
-  int32_t sum1 = 0;
-  int32_t sum2 = 0;
   AccelData *dx = data;
   for (uint32_t i = 0; i < num_samples; i++, dx++) {
     // If vibe went off then discount everything
     if (dx->did_vibrate) {
       APP_LOG(APP_LOG_LEVEL_DEBUG, "Vibrate invalidated datapoint");
-      return;
+      continue;
     }
+    samples_counted++;
     x = dx->x;
     y = dx->y;
     z = dx->z;
@@ -40,31 +42,33 @@ static void accel_data_handler(AccelData *data, uint32_t num_samples) {
     x -= (x/l)*1000;
     y -= (y/l)*1000;
     z -= (z/l)*1000;
-    if (i < num_samples/2)
-      sum1 += (int32_t)sm_sqrt(x*x + y*y + z*z);
-    else
-      sum2 += (int32_t)sm_sqrt(x*x + y*y + z*z);
+    if ((x > 0 && x_prev < 0) || (x < 0 && x_prev > 0) ||
+        (y > 0 && y_prev < 0) || (y < 0 && y_prev > 0) ||
+        (z > 0 && z_prev < 0) || (z < 0 && z_prev > 0)) {
+      count++;
+    }
+    x_prev = x;
+    y_prev = y;
+    z_prev = z;
   }
   
-  uint16_t diff = (uint16_t)abs(sum2 - sum1);
-  
-  // Store the sample to the datastore and log to the datalog
-  Sample s = {
-    .data = diff > 255 ? 255 : (uint8_t)diff
-  };
-  cb_push_back(&buf, &s);
+  // Append the datastore if necessary
+  if (samples_counted >= SAMPLES_PER_EPOCH) {
+    count = count > 255 ? 255 : count;
+    cb_push_back(&buf, &count);
 #if DEBUG  
-  data_logging_log(s_session_ref, &diff, 1);
+    data_logging_log(s_session_ref, &count, 1);
 #endif
+    count = 0;
+    samples_counted = 0;
+  }
 }
 
 uint16_t mean(void) {
-  Sample s1;
   uint32_t sum = 0;
   uint32_t n = cb_size(&buf);
   for (uint32_t i=0; i<n; i++) {
-    s1 = *(Sample*)cb_peek(&buf, i);
-    sum += s1.data;
+    sum += *(uint8_t*)cb_peek(&buf, i);
   }
   return (uint16_t)(sum / n);
 }
@@ -72,12 +76,10 @@ uint16_t mean(void) {
 uint16_t std_dev(void) {
   uint32_t n = cb_size(&buf);
   if (n == 0) return 0;
-  Sample s;
   uint32_t sum = 0;
   uint32_t sq_sum = 0;
   for(uint32_t i=0; i<n; i++) {
-    s = *(Sample*)cb_peek(&buf, i);
-    uint32_t d = s.data;
+    uint32_t d = *(uint8_t*)cb_peek(&buf, i);
     sum += d;
     sq_sum += d * d;
   }
@@ -88,9 +90,9 @@ uint16_t std_dev(void) {
 bool is_local_max(void) {
 
   unsigned int num_buffer = cb_size(&buf);
-  unsigned int num_bins = num_buffer/LOCAL_AVG_SIZE;
+  unsigned int num_bins = EPOCHS_IN_BUFFER / EPOCHS_PER_BIN;
     
-  if (LOCAL_AVG_SIZE*2 >= num_buffer) {
+  if (num_buffer < EPOCHS_IN_BUFFER) {
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Number of samples requested is too high");
     return false;
   }
@@ -100,27 +102,17 @@ bool is_local_max(void) {
   } 
   
   // Mean and standard deviation over whole datastore
-  uint16_t avg = mean();
-  uint16_t std = std_dev();
-  uint16_t thr = avg + std;
+  uint16_t avg = mean() * num_bins;
+  uint16_t std = std_dev() * num_bins;
   
   // Calculate spike rates
-  Sample s;
-  uint16_t spikes_global = 0;
   uint16_t spikes_bins[3] = {0};
   for (unsigned int i=0; i<num_buffer; i++) {
-    s = *(Sample*)cb_peek(&buf, i);
-    if (s.data > thr) {
-      spikes_global++;
-      if (i*num_bins/num_buffer < 3) spikes_bins[i*num_bins/num_buffer]++;
-    }
-  }
-  for (unsigned int i=0; i<3; i++) {
-    spikes_bins[i] *= num_bins;
+    spikes_bins[i*num_bins/num_buffer] += *(uint8_t*)cb_peek(&buf, i);
   }
 
-  // No need to continue if local is lower global
-  if (spikes_bins[0] <= spikes_global)
+  // Middle bin should be maximum
+  if (spikes_bins[1] <= avg + std)
     return false;
   
   // Slope must be negative
@@ -160,13 +152,13 @@ void init_accel(void) {
 
 #if DEBUG  
   // Set up the datalog
-  s_session_ref = data_logging_create(1, DATA_LOGGING_UINT, sizeof(uint16_t), false);
-  uint64_t flag = 0;
+  s_session_ref = data_logging_create(1, DATA_LOGGING_UINT, sizeof(uint8_t), false);
+  uint32_t flag = 0;
   data_logging_log(s_session_ref, &flag, 4);
 #endif
   
   // Set up the circular buffer datastore
-  cb_init(&buf, BUF_SIZE, sizeof(Sample));
+  cb_init(&buf, EPOCHS_IN_BUFFER, sizeof(uint8_t));
 }
 
 // De-initialize if needed
@@ -175,7 +167,7 @@ void deinit_accel(void) {
   accel_data_service_unsubscribe();
   cb_free(&buf);
 #if DEBUG
-  uint64_t flag = 0;
+  uint32_t flag = 0;
   data_logging_log(s_session_ref, &flag, 4);
   time_t now = time(NULL);
   struct tm *t = localtime(&now);
