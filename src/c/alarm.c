@@ -1,10 +1,10 @@
 #include <pebble.h>
 #include "alarm.h"
 
-#define ALARM_REPEAT 6
-#define ALARM_LIMIT (ARRAY_LENGTH(alarm_pattern) * ALARM_REPEAT)
-#define SNOOZE_DURATION_SECONDS 9 * SECONDS_PER_MINUTE
-#define VIBE_DUR_MS PBL_IF_ROUND_ELSE(100, 50)
+#define ALARM_REPEAT              6
+#define ALARM_LIMIT               (ARRAY_LENGTH(alarm_pattern) * ALARM_REPEAT)
+#define SNOOZE_DURATION_SECONDS   9 * SECONDS_PER_MINUTE
+#define VIBE_DUR_MS               PBL_IF_ROUND_ELSE(100, 50)
 
 // Times (in seconds) between each vibe (gives a progressive alarm and gaps between phases)
 static uint8_t alarm_pattern[] = { 5, 4, 4, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1, 30 };

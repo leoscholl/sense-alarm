@@ -2,8 +2,8 @@
 #include "ui.h"
 #include "settings.h"
 
-#define TIME_CHANGE_RESOLUTION 5
-#define TIME_CHANGE_REPEAT_DURATION 50
+#define TIME_CHANGE_RESOLUTION        5
+#define TIME_CHANGE_REPEAT_DURATION   50
 
 Window *s_main_window;
 TextLayer *time_layer;

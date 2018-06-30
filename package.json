@@ -1,8 +1,6 @@
 {
     "author": "leo.scholl@gmail.com",
-    "dependencies": {
-        "pebble-clay": "^1.0.4"
-    },
+    "dependencies": {},
     "keywords": [],
     "name": "sense-alarm",
     "pebble": {

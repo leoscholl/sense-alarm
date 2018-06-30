@@ -2,14 +2,14 @@
 #include "background.h"
 #include "accel.h"
 
-#define ALARM_HOUR_KEY 0
-#define ALARM_MINUTE_KEY 1
+#define ALARM_HOUR_KEY            0
+#define ALARM_MINUTE_KEY          1
 
-#define RECORDING_BEFORE_WAKEUP_WINDOW_SECONDS 6 * SECONDS_PER_HOUR
-#define WAKEUP_WINDOW_SECONDS 30 * SECONDS_PER_MINUTE
+#define PRE_RECORDING_SECONDS     6 * SECONDS_PER_HOUR
+#define WAKEUP_WINDOW_SECONDS     30 * SECONDS_PER_MINUTE
 
-#define SENDER_WORKER 0
-#define SENDER_APP 1
+#define SENDER_WORKER             0
+#define SENDER_APP                1
 
 time_t alarm_time;
 bool accel_is_on = false;
@@ -70,7 +70,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
   // If the alarm time was changed recently, may need to turn off accelerometer
   if (accel_is_on && 
       mktime(tick_time) < alarm_time - WAKEUP_WINDOW_SECONDS -
-                          RECORDING_BEFORE_WAKEUP_WINDOW_SECONDS) {
+                          PRE_RECORDING_SECONDS) {
     deinit_accel();
     accel_is_on = false;
     return;
@@ -79,7 +79,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits changed) {
   // Turn on acceleration logging if needed
   if (!accel_is_on && 
       mktime(tick_time) >= alarm_time - WAKEUP_WINDOW_SECONDS -
-                           RECORDING_BEFORE_WAKEUP_WINDOW_SECONDS) {
+                           PRE_RECORDING_SECONDS) {
     init_accel();
     accel_is_on = true;
   }

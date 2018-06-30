@@ -3,11 +3,11 @@
 #include "settings.h"
 #include "ui.h"
 
-#define WAKEUP_HOUR 8
-#define WAKEUP_MINUTE 15
+#define WAKEUP_HOUR     8
+#define WAKEUP_MINUTE   15
 
-#define SENDER_WORKER 0
-#define SENDER_APP 1
+#define SENDER_WORKER   0
+#define SENDER_APP      1
 
 bool did_alarm_init = false;
 

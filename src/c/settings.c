@@ -1,12 +1,12 @@
 #include <pebble.h>
 #include "settings.h"
 
-#define ALARM_HOUR_KEY 0
-#define ALARM_MINUTE_KEY 1
-#define ALARM_ON_KEY 2
+#define ALARM_HOUR_KEY     0
+#define ALARM_MINUTE_KEY   1
+#define ALARM_ON_KEY       2
 
-#define SENDER_WORKER 0
-#define SENDER_APP 1
+#define SENDER_WORKER      0
+#define SENDER_APP         1
 
 AppWorkerMessage message = {
   .data0 = true

@@ -102,8 +102,8 @@ bool is_local_max(void) {
   } 
   
   // Mean and standard deviation over whole datastore
-  uint16_t avg = mean() * num_bins;
-  uint16_t std = std_dev() * num_bins;
+  uint16_t avg = mean() * EPOCHS_PER_BIN;
+  uint16_t std = std_dev() * EPOCHS_PER_BIN;
   
   // Calculate spike rates
   uint16_t spikes_bins[3] = {0};
