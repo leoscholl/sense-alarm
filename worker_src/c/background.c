@@ -5,7 +5,7 @@
 #define ALARM_HOUR_KEY            0
 #define ALARM_MINUTE_KEY          1
 
-#define PRE_RECORDING_SECONDS     6 * SECONDS_PER_HOUR
+#define PRE_RECORDING_SECONDS     4 * SECONDS_PER_HOUR
 #define WAKEUP_WINDOW_SECONDS     30 * SECONDS_PER_MINUTE
 
 #define SENDER_WORKER             0

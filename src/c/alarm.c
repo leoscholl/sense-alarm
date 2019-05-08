@@ -7,7 +7,7 @@
 #define VIBE_DUR_MS               PBL_IF_ROUND_ELSE(100, 50)
 
 // Times (in seconds) between each vibe (gives a progressive alarm and gaps between phases)
-static uint8_t alarm_pattern[] = { 5, 4, 4, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1, 30 };
+static uint8_t alarm_pattern[] = { 6, 5, 4, 4, 3, 3, 3, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 13 };
 
 // Pulse widths (in milliseconds) for each single vibe
 static uint32_t const single_segments[] = { VIBE_DUR_MS };
@@ -31,10 +31,9 @@ static AppTimer *alarm_timer = NULL;
 uint8_t alarm_count = ALARM_LIMIT;
 
 Window *s_window;
-static StatusBarLayer *s_status_bar;
 static ActionBarLayer *s_action_bar;
 static ActionMenuLevel *s_root_level;
-static TextLayer *s_label_layer;
+static TextLayer *s_time_layer;
 static GBitmap *s_ellipsis_bitmap;
 
 // Alarm timer loop
@@ -51,8 +50,10 @@ void do_alarm(void *data) {
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Alarm count = %u", (unsigned int)alarm_count);
 
   // Already hit the limit, give up
-  if (alarm_count >= ALARM_LIMIT)
+  if (alarm_count >= ALARM_LIMIT) {
+    alarm_timer = NULL;    
     return;
+  }
   
   // Vibrate
   VibePattern pat = *vibe_pattern[(alarm_count / ARRAY_LENGTH(alarm_pattern)) % ARRAY_LENGTH(vibe_pattern)];
@@ -66,6 +67,10 @@ void do_alarm(void *data) {
 
 static void do_snooze(void) {
   APP_LOG(APP_LOG_LEVEL_INFO, "Alarm snoozed");
+  if (alarm_timer != NULL) {
+    app_timer_cancel(alarm_timer);
+    alarm_timer = NULL;
+  }
   WakeupId id = wakeup_schedule(time(NULL) + SNOOZE_DURATION_SECONDS, 0, true);
   if (id < 0)
     APP_LOG(APP_LOG_LEVEL_ERROR, "Snooze failed");
@@ -117,11 +122,23 @@ static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_DOWN, other_click_handler);
 }
 
+// Text layer updater
+static void update_time() {
+  time_t temp = time(NULL);
+  struct tm *tick_time = localtime(&temp);
+  static char s_buffer[10];
+  strftime(s_buffer, sizeof(s_buffer), clock_is_24h_style() ? "%H :%M" : "%I :%M", tick_time);
+  text_layer_set_text(s_time_layer, s_buffer);
+}
+
+static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
+  update_time();
+}
+
 // Unload the window
 void alarm_window_unload(Window *window) {
-  text_layer_destroy(s_label_layer);
+  text_layer_destroy(s_time_layer);
   action_bar_layer_destroy(s_action_bar);
-  status_bar_layer_destroy(s_status_bar);
   gbitmap_destroy(s_ellipsis_bitmap);
   action_menu_hierarchy_destroy(s_root_level, NULL, NULL);
   
@@ -130,7 +147,7 @@ void alarm_window_unload(Window *window) {
     do_snooze();
 }
 
-// Load the window
+// Load the window 
 void alarm_window_load(Window *window) {
 
   Layer *window_layer = window_get_root_layer(window);
@@ -142,37 +159,32 @@ void alarm_window_load(Window *window) {
   action_bar_layer_set_click_config_provider(s_action_bar, click_config_provider);
   action_bar_layer_set_icon(s_action_bar, BUTTON_ID_SELECT, s_ellipsis_bitmap);
   action_bar_layer_add_to_window(s_action_bar, window);
-  
+
+  // Text layer to display the time
   int16_t width = bounds.size.w - ACTION_BAR_WIDTH;
-
-  // Status bar shows the time at the top of the main alarm window
-  s_status_bar = status_bar_layer_create();
-  status_bar_layer_set_colors(s_status_bar, GColorClear, PBL_IF_COLOR_ELSE(GColorWhite, GColorBlack));
-  status_bar_layer_set_separator_mode(s_status_bar, 
-                                      StatusBarLayerSeparatorModeDotted);
-  GRect frame = GRect(0, 0, width, STATUS_BAR_LAYER_HEIGHT);
-  layer_set_frame(status_bar_layer_get_layer(s_status_bar), frame);  
-  layer_add_child(window_layer, status_bar_layer_get_layer(s_status_bar));
-
-
-  // Text layer to display a message about the alarm
-  s_label_layer = text_layer_create(GRect(bounds.origin.x, bounds.size.h/4, 
-                                          width, bounds.size.h/2));
-  text_layer_set_text(s_label_layer, "Alarm is going off! Time to wake up!!");
-  text_layer_set_font(s_label_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
-  text_layer_set_text_color(s_label_layer, PBL_IF_COLOR_ELSE(GColorWhite, GColorBlack));
-  text_layer_set_background_color(s_label_layer, GColorClear);
-  text_layer_set_text_alignment(s_label_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, text_layer_get_layer(s_label_layer));
+  s_time_layer = text_layer_create(GRect(bounds.origin.x, bounds.origin.y+10, 
+                                          width-10, bounds.size.h-20));
+  text_layer_set_background_color(s_time_layer, GColorClear);
+  text_layer_set_text_color(s_time_layer, PBL_IF_COLOR_ELSE(GColorWhite, GColorBlack));
+  text_layer_set_text(s_time_layer, "00 :00");
+  text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_ROBOTO_BOLD_SUBSET_49));
+  text_layer_set_text_alignment(s_time_layer, GTextAlignmentRight);
+  text_layer_set_overflow_mode(s_time_layer, GTextOverflowModeWordWrap);
+  layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
 
 #if defined(PBL_ROUND)
-  text_layer_enable_screen_text_flow_and_paging(s_label_layer, 3);
+  text_layer_enable_screen_text_flow_and_paging(s_time_layer, 3);
 #endif
+
+  update_time();
 
   // Set up the actions menu
   s_root_level = action_menu_level_create(2);
   action_menu_level_add_action(s_root_level, "Stop", action_performed_callback, (bool *)false);
   action_menu_level_add_action(s_root_level, "Snooze", action_performed_callback, (bool *)true);
+
+  // Register with TickTimerService
+  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   
 }
 

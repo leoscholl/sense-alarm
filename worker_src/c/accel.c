@@ -7,19 +7,21 @@
 #define SAMPLES_PER_BATCH     25
 #define SECONDS_PER_EPOCH     SECONDS_PER_MINUTE
 #define SECONDS_PER_BIN       10 * SECONDS_PER_MINUTE
-#define SECONDS_IN_BUFFER     SECONDS_PER_BIN * 3
+#define SECONDS_IN_BUFFER     2 * SECONDS_PER_HOUR
 
 #define SAMPLES_PER_EPOCH     SECONDS_PER_EPOCH * SAMPLE_RATE
 #define EPOCHS_PER_BIN        SECONDS_PER_BIN / SECONDS_PER_EPOCH
 #define EPOCHS_IN_BUFFER      SECONDS_IN_BUFFER / SECONDS_PER_EPOCH
 
-#define DEBUG 1
+#define DEBUG 0
 
 uint16_t count = 0;
 uint16_t samples_counted = 0;
-static DataLoggingSessionRef s_session_ref;
 static circular_buffer buf;
-
+#if DEBUG
+static DataLoggingSessionRef s_session_ref;
+static DataLoggingSessionRef l_session_ref;
+#endif
 
 // Count zero-crossings in accelerometer data batches
 static void accel_data_handler(AccelData *data, uint32_t num_samples) {
@@ -73,19 +75,6 @@ uint16_t mean(void) {
   return (uint16_t)(sum / n);
 }
 
-uint16_t std_dev(void) {
-  uint32_t n = cb_size(&buf);
-  if (n == 0) return 0;
-  uint32_t sum = 0;
-  uint32_t sq_sum = 0;
-  for(uint32_t i=0; i<n; i++) {
-    uint32_t d = *(uint8_t*)cb_peek(&buf, i);
-    sum += d;
-    sq_sum += d * d;
-  }
-  return (uint16_t)sm_sqrt((n * sq_sum - sum * sum) / (n * n));
-}
-
 // // Check whether accel data is at local maximum
 bool is_local_max(void) {
 
@@ -101,26 +90,31 @@ bool is_local_max(void) {
     return false;
   } 
   
-  // Mean and standard deviation over whole datastore
+  // Mean over whole datastore
   uint16_t avg = mean() * EPOCHS_PER_BIN;
-  uint16_t std = std_dev() * EPOCHS_PER_BIN;
   
   // Calculate spike rates
   uint16_t spikes_bins[3] = {0};
-  for (unsigned int i=0; i<num_buffer; i++) {
-    spikes_bins[i*num_bins/num_buffer] += *(uint8_t*)cb_peek(&buf, i);
+  for (unsigned int i=0; i<3*EPOCHS_PER_BIN; i++) {
+    spikes_bins[i/EPOCHS_PER_BIN] += *(uint8_t*)cb_peek(&buf, i);
   }
 
-  // Middle bin should be maximum
-  if (spikes_bins[1] <= avg + std)
+#if DEBUG
+  data_logging_log(l_session_ref, &spikes_bins, 1);
+  data_logging_log(l_session_ref, &avg, 1);
+  data_logging_log(l_session_ref, &num_buffer, 1);
+#endif
+
+  // Middle bin should be above threshold
+  if (spikes_bins[1] <= avg)
     return false;
   
   // Slope must be negative
-  if (spikes_bins[0] < spikes_bins[1])
+  if (spikes_bins[0] > spikes_bins[1])
     return false;
   
   // Previous slope must be positive
-  if (spikes_bins[1] > spikes_bins[2])
+  if (spikes_bins[1] < spikes_bins[2])
     return false;
 
   return true;
@@ -151,7 +145,8 @@ void init_accel(void) {
   }
 
 #if DEBUG  
-  // Set up the datalog
+  // Set up the datalogs
+  l_session_ref = data_logging_create(2, DATA_LOGGING_UINT, sizeof(uint16_t), false);
   s_session_ref = data_logging_create(1, DATA_LOGGING_UINT, sizeof(uint8_t), false);
   uint32_t flag = 0;
   data_logging_log(s_session_ref, &flag, 4);
@@ -167,6 +162,7 @@ void deinit_accel(void) {
   accel_data_service_unsubscribe();
   cb_free(&buf);
 #if DEBUG
+  data_logging_finish(l_session_ref);
   uint32_t flag = 0;
   data_logging_log(s_session_ref, &flag, 4);
   time_t now = time(NULL);

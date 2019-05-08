@@ -1,0 +1,50 @@
+{
+    "targetPlatforms": [
+        "aplite", 
+        "basalt", 
+        "chalk", 
+        "diorite"
+    ], 
+    "projectType": "native", 
+    "name": "sense-alarm", 
+    "messageKeys": {}, 
+    "companyName": "leo.scholl@gmail.com", 
+    "enableMultiJS": false, 
+    "versionLabel": "1.0", 
+    "capabilities": [
+        "configurable"
+    ], 
+    "sdkVersion": "3", 
+    "appKeys": {}, 
+    "longName": "Sense Alarm", 
+    "displayName": "Sense Alarm", 
+    "shortName": "Sense Alarm", 
+    "watchapp": {
+        "watchface": false
+    }, 
+    "resources": {
+        "media": [
+            {
+                "targetPlatforms": null, 
+                "type": "bitmap", 
+                "name": "IMAGE_ELLIPSIS", 
+                "file": "images/ellipsis-icon.png"
+            }, 
+            {
+                "targetPlatforms": null, 
+                "name": "IMAGE_CLOCK_25", 
+                "storageFormat": "png", 
+                "file": "images/clock-icon-25.png", 
+                "menuIcon": true, 
+                "type": "bitmap"
+            }, 
+            {
+                "targetPlatforms": null, 
+                "type": "bitmap", 
+                "name": "IMAGE_CLOCK", 
+                "file": "images/clock-icon.png"
+            }
+        ]
+    }, 
+    "uuid": "01100d10-09f2-4f53-b9c6-7df2d472055b"
+}

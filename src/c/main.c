@@ -51,8 +51,7 @@ static void handle_init(void) {
     wakeup_service_subscribe(wakeup_handler);
   
     // Make sure worker is turned on if alarm is on
-    if (get_alarm_state() && !app_worker_is_running())
-      app_worker_launch();
+    set_alarm_state(get_alarm_state());
   }
 
 }

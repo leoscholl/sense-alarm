@@ -25,10 +25,11 @@ void set_alarm_state(bool state) {
   }
   
   // Turn on or off the worker
-  if (state) {
+  if (state && !app_worker_is_running()) {
     app_worker_launch();
-  } else {
+  } else if (!state) {
     app_worker_kill();
+    wakeup_cancel_all();
   }
 }
 

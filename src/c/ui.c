@@ -11,35 +11,28 @@ TextLayer *text_layer;
 StatusBarLayer *status_bar;
 
 // Change the time displayed on the screen
-static void display_time(uint32_t hour, uint32_t minute) {
-  
-  static char buffer[20];
-  if (clock_is_24h_style())
-    snprintf(buffer, sizeof(buffer), "Alarm set: %02u:%02u", (unsigned int)hour, (unsigned int)minute);
-  else
-    snprintf(buffer, sizeof(buffer), "Alarm set: %u:%02u%s", hour % 12 ? (unsigned int)hour % 12 : 12, 
-             (unsigned int)minute, hour >= 12 ? "pm" : "am");
-  text_layer_set_text(time_layer, buffer);
-  layer_set_hidden(text_layer_get_layer(time_layer), false);
-  layer_set_hidden(text_layer_get_layer(text_layer), true);
-}
+static void update_time(void) {
+  uint32_t hour;
+  uint32_t minute;
+  get_alarm_time(&hour, &minute);
 
-// Display message instead of time
-static void display_msg(char *msg) {
-  text_layer_set_text(text_layer, msg);
-  layer_set_hidden(text_layer_get_layer(time_layer), true);
-  layer_set_hidden(text_layer_get_layer(text_layer), false);
+  static char buffer[11];
+  if (clock_is_24h_style())
+    snprintf(buffer, sizeof(buffer), "%02u :%02u", (unsigned int)hour, (unsigned int)minute);
+  else
+    snprintf(buffer, sizeof(buffer), "%3u :%02u", hour % 12 ? (unsigned int)hour % 12 : 12, (unsigned int)minute);
+  text_layer_set_text(time_layer, buffer);
 }
 
 // Display either the time or the default message depending on state (alarm ON or OFF)
 static void display_default(bool state) {
   if (state) {
-    uint32_t hour;
-    uint32_t minute;
-    get_alarm_time(&hour, &minute);
-    display_time(hour, minute);
+    update_time();
+    text_layer_set_text(text_layer, "Alarm set:");
+    layer_set_hidden(text_layer_get_layer(time_layer), false);
   } else {
-    display_msg("No alarm set");
+    text_layer_set_text(text_layer, "No alarm set");
+    layer_set_hidden(text_layer_get_layer(time_layer), true);
   }
 }
 
@@ -50,7 +43,7 @@ static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
   uint32_t hour;
   uint32_t minute;
   change_alarm_time(&hour, &minute, TIME_CHANGE_RESOLUTION);
-  display_time(hour, minute);
+  update_time();
 }
 
 // Down clicks decrease the time
@@ -60,7 +53,7 @@ static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
   uint32_t hour;
   uint32_t minute;
   change_alarm_time(&hour, &minute, -TIME_CHANGE_RESOLUTION);
-  display_time(hour, minute);
+  update_time();
 }
 
 // Select clicks turns the alarm on or off
@@ -91,23 +84,25 @@ static void main_window_load(Window *window) {
   
   // Calculate remaining space
   GRect bounds = layer_get_unobstructed_bounds(window_layer);
-  GRect text_bounds = GRect(bounds.origin.x+10, bounds.size.h/3, bounds.size.w-20, bounds.size.h/3);
   
   // Create text layer
+  GRect text_bounds = GRect(bounds.origin.x+10, bounds.origin.y+10, bounds.size.w-20, bounds.size.h-20);
   text_layer = text_layer_create(text_bounds);
   text_layer_set_background_color(text_layer, GColorClear);
   text_layer_set_text_color(text_layer, GColorWhite);
-  text_layer_set_font(text_layer, fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21));
-  text_layer_set_text_alignment(text_layer, GTextAlignmentCenter);
+  text_layer_set_font(text_layer, fonts_get_system_font(FONT_KEY_DROID_SERIF_28_BOLD));
+  text_layer_set_overflow_mode(text_layer, GTextOverflowModeWordWrap);
+  text_layer_set_text_alignment(text_layer, GTextAlignmentLeft);
   layer_add_child(window_layer, text_layer_get_layer(text_layer));
   
   // Create time layer
-  time_layer = text_layer_create(text_bounds);
+  GRect time_bounds = GRect(bounds.origin.x+10, bounds.size.h/2-20, bounds.size.w-20, bounds.size.h/2+20);
+  time_layer = text_layer_create(time_bounds);
   text_layer_set_background_color(time_layer, GColorClear);
   text_layer_set_text_color(time_layer, GColorWhite);
-  text_layer_set_font(time_layer, fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21));
+  text_layer_set_font(time_layer, fonts_get_system_font(FONT_KEY_ROBOTO_BOLD_SUBSET_49));
   text_layer_set_overflow_mode(time_layer, GTextOverflowModeWordWrap);
-  text_layer_set_text_alignment(time_layer, GTextAlignmentCenter);
+  text_layer_set_text_alignment(time_layer, GTextAlignmentRight);
   layer_add_child(window_layer, text_layer_get_layer(time_layer));
 }
 
